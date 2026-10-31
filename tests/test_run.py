@@ -16,7 +16,7 @@ def test_el_esquema_del_csv_tiene_lo_que_pide_la_spec():
         "aggregation", "consensus_scale",
         "status", "error",
         # metricas
-        "error_fase_medio_h", "error_fase_h", "rho_circ", "tau", "tau_circular", "acierto_sentido",
+        "error_fase_medio_h", "error_fase_h", "rho_circ", "tau", "tau_circular",
         "p1", "p2", "p4", "error_orden_h",
         # observables sin la verdad
         "r2_anchor", "pares_ok", "evidencia", "desacuerdo_K",
@@ -47,7 +47,6 @@ def test_una_celda_sin_ruido_produce_una_fila_completa():
     assert fila["n_evaluadas"] > 0
     # sin ruido y con omega moderada la reconstruccion tiene que ser buena
     assert fila["tau_circular"] > 0.9
-    assert fila["acierto_sentido"] == 1.0
 
 
 def test_un_fallo_de_las_etapas_0_a_3_se_registra_y_no_revienta(monkeypatch):

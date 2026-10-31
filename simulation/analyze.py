@@ -77,7 +77,6 @@ ETIQUETAS = {
     "concordancia":              "concordancia circular",
     "cre":                       "error relativo de concordancia (CRE)",
     "tau_circular":              "tau circular con signo",
-    "acierto_sentido":           "acierto del sentido de giro",
     "atlas_error_onda":          "error de la onda del atlas",
     "atlas_variabilidad_pico_h": "variabilidad del error en la hora del pico (h)",
     "atlas_sesgo_omega":         "sesgo de omega",
@@ -102,19 +101,15 @@ def etiqueta(clave: str) -> str:
 
 # Medidas continuas, se agregan con mediana.
 #
-# Va ``concordancia`` y no ``tau_circular``. ``tau_circular`` cambia de signo cuando el
-# ciclo se recorre al reves, de modo que su SIGNO y su MAGNITUD responden a dos
-# preguntas distintas: el signo dice la orientacion y la magnitud la calidad
-# del orden. ``acierto_sentido`` se define como ``tau_circular > 0``, asi que el
-# signo ya esta contado en su propia columna. Resumir con signo mezcla las
-# dos: cuatro replicas +0,8 +0,8 -0,8 -0,8 dan mediana 0,0, que se lee como
-# "no se recupero nada" cuando la calidad real es 0,8 en las cuatro.
-MEDIDAS = ["error_fase_h", "error_fase_medio_h", "error_orden_h", "concordancia",
-           "cre", "rho_fl", "rho_circ", "tau",
+# ``tau_circular`` es la medida del orden que se reporta: su signo dice el
+# sentido de giro (+ el correcto) y su magnitud la calidad del orden. Ya no hay
+# una tasa de acierto del sentido aparte. Va tambien ``concordancia``,
+# |tau_circular|, porque la mediana con signo mezcla las dos cosas: cuatro
+# replicas +0,8 +0,8 -0,8 -0,8 dan mediana 0,0 con una calidad de 0,8 en las
+# cuatro.
+MEDIDAS = ["error_fase_h", "error_fase_medio_h", "error_orden_h", "tau_circular",
+           "concordancia", "cre", "rho_fl", "rho_circ", "tau",
            "p2", "r2_anchor", "evidencia", "n_top"]
-
-# Proporciones, se agregan con media porque son tasas.
-TASAS = ["acierto_sentido"]
 
 # Las cuatro del atlas que van a las tablas del capitulo. Cada una responde a
 # una pregunta distinta:
@@ -227,9 +222,6 @@ def _resumen(df: pd.DataFrame, por: list[str]) -> pd.DataFrame:
     iqr   = _con_nivel(g[medidas].quantile(0.75) - g[medidas].quantile(0.25),
                        medidas, "iqr")
     tabla = pd.concat([tabla, iqr], axis=1)
-
-    for t in (t for t in TASAS if t in ok.columns):
-        tabla[(t, "tasa")] = g[t].mean()
     tabla[("tasa_fallo", "")] = fallo
     tabla[("n", "")] = df.groupby(por).size()
     return tabla.sort_index(axis=1)
@@ -308,14 +300,14 @@ def tabla_atlas(df: pd.DataFrame,
     da los valores absolutos para poder decir, por ejemplo, que a A/sigma=4
     el error de pico esta por debajo de la hora con los dos metodos.
 
-    Solo se resumen las filas con la orientacion bien resuelta. Una escala
-    reflejada da un atlas especular, con errores de pico repartidos por todo
-    el ciclo, y mezclarlos con los aciertos no promedia dos calidades sino
-    dos regimenes distintos.
+    Solo se resumen las filas con el sentido de giro correcto, tau_circular
+    > 0. Una escala reflejada da un atlas especular, con errores de pico
+    repartidos por todo el ciclo, y mezclarlos con los aciertos no promedia
+    dos calidades sino dos regimenes distintos.
     """
     g = _rejilla(df)
     g = g[(g["metodo"] == metodo) & (g["status"] == "ok")
-          & (g["acierto_sentido"] == 1.0)]
+          & (g["tau_circular"] > 0)]
     if g.empty:
         raise ValueError("no hay filas con orientacion resuelta en la rejilla")
     medidas = [m for m in MEDIDAS_ATLAS if m in g.columns]
@@ -365,19 +357,19 @@ def contraste_fmm(df: pd.DataFrame, metodo: str = METODO_REFERENCIA,
     construccion. Donde se diferencian es en el atlas, y por eso las medidas
     del atlas van delante. Las de orden se conservan como comprobacion.
 
-    Con ``solo_orientadas`` se exige que la orientacion este resuelta en los
-    DOS brazos: una escala reflejada da un atlas especular, que es otro
-    regimen y no una calidad peor.
+    Con ``solo_orientadas`` se exige el sentido de giro correcto, tau_circular
+    > 0, en los DOS brazos: una escala reflejada da un atlas especular, que
+    es otro regimen y no una calidad peor.
     """
     r = _rejilla(df)
     r = r[r["metodo"] == metodo]
-    medidas = MEDIDAS_ATLAS + MEDIDAS_ORDEN_ENTRE_FMM + ["acierto_sentido", "t_total_s"]
+    medidas = MEDIDAS_ATLAS + MEDIDAS_ORDEN_ENTRE_FMM + ["tau_circular", "t_total_s"]
     par = _emparejar(r[r["fmm_method"] == "base"],
                      r[r["fmm_method"] == "circafmm"],
                      medidas, ("_base", "_circafmm"))
     if solo_orientadas:
-        par = par[(par["acierto_sentido_base"] == 1.0)
-                  & (par["acierto_sentido_circafmm"] == 1.0)]
+        par = par[(par["tau_circular_base"] > 0)
+                  & (par["tau_circular_circafmm"] > 0)]
     return par.reset_index(drop=True)
 
 
@@ -394,7 +386,7 @@ def contraste_metodos(df: pd.DataFrame, fmm: str = FMM_REFERENCIA,
     r = _rejilla(df)
     r = r[r["fmm_method"] == fmm]
     ref = r[r["metodo"] == referencia]
-    medidas = MEDIDAS_ORDEN + ["acierto_sentido", "t_robust_s"]
+    medidas = MEDIDAS_ORDEN + ["tau_circular", "t_robust_s"]
     trozos = []
     for metodo, sub in r.groupby("metodo"):
         if metodo == referencia:
@@ -541,8 +533,8 @@ def tabla_tiempos(df_tiempos: pd.DataFrame) -> pd.DataFrame:
 def calibracion_orientacion(df: pd.DataFrame, indicador: str = "evidencia",
                             n_tramos: int = 8) -> pd.DataFrame:
     """
-    Relacion entre un indicador **observable sin la verdad** y el acierto de
-    la orientacion.
+    Relacion entre un indicador **observable sin la verdad** y la tau
+    circular, cuyo signo dice si el sentido de giro es el correcto.
 
     Es la base del aviso de fase absoluta: en un tejido nuevo no se puede
     medir el error, pero si se puede medir el indicador, y esta tabla dice
@@ -558,7 +550,7 @@ def calibracion_orientacion(df: pd.DataFrame, indicador: str = "evidencia",
     return pd.DataFrame({
         "n":                  g.size(),
         f"{indicador}_medio": g[indicador].median(),
-        "acierto_orientacion": g["acierto_sentido"].mean(),
+        "tau_circular":       g["tau_circular"].median(),
         "error_fase_h":            g["error_fase_h"].median(),
     })
 
@@ -617,13 +609,13 @@ def figura_snr(df: pd.DataFrame, out: Path) -> None:
 
 
 def figura_orientacion(df: pd.DataFrame, out: Path) -> None:
-    """Tasa de acierto de orientacion, que va aparte del error."""
+    """Tau circular por omega y A/sigma: el signo dice el sentido de giro."""
     p = _referencia(df)
     p = p[p["status"] == "ok"]
-    datos = p.groupby(["omega", "snr"])["acierto_sentido"].mean().reset_index()
-    _figura_lineas(datos, "snr", "acierto_sentido", "omega",
-                   "Acierto del sentido de giro",
-                   etiqueta("snr"), "fraccion de replicas con el sentido correcto", out)
+    datos = p.groupby(["omega", "snr"])["tau_circular"].median().reset_index()
+    _figura_lineas(datos, "snr", "tau_circular", "omega",
+                   "Tau circular",
+                   etiqueta("snr"), "mediana de la " + etiqueta("tau_circular"), out)
 
 
 def figura_efectos(par: pd.DataFrame, medida: str, titulo: str,

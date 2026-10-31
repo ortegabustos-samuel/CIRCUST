@@ -21,7 +21,7 @@ def _fila(bloque, fmm, rep, snr=2.0, omega=0.5, n=48, rmse=0.3, **kw):
         n_samples=n, sampling="uniforme", n_genes=1000, prop_rhythmic=0.2,
         n_core=20, robust_method="best_k", selection_criterion="r2_median",
         aggregation="auto", consensus_scale="circmean",
-        status="ok", acierto_sentido=1.0,
+        status="ok", tau_circular=0.9,
         atlas_error_onda=rmse, atlas_variabilidad_pico_h=1.0,
         atlas_sesgo_omega=-0.1, atlas_vpp=0.95, atlas_err_subida_h=1.0,
     )
@@ -69,7 +69,7 @@ def test_se_descartan_las_replicas_con_la_orientacion_invertida(tmp_path):
         # en la replica 0 falla el brazo CircaFMM
         filas.append(_fila("rejilla", "base", rep))
         filas.append(_fila("rejilla", "circafmm", rep,
-                           acierto_sentido=0.0 if rep == 0 else 1.0))
+                           tau_circular=-0.9 if rep == 0 else 0.9))
     par = cargar_pareado(_csv(tmp_path, filas))
     assert len(par) == 3
     assert 0 not in set(par["rep"])

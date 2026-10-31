@@ -41,7 +41,7 @@ def _falso(reps: int = 8) -> pd.DataFrame:
                     robust_method=rm, selection_criterion=sel,
                     aggregation=agg, consensus_scale=esc,
                     error_orden_h=error, tau_circular=0.9,
-                    error_fase_h=error + 0.5, acierto_sentido=1.0,
+                    error_fase_h=error + 0.5,
                     t_robust_s=1.0,
                 ))
     return pd.DataFrame(filas)

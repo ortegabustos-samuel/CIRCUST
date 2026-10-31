@@ -123,7 +123,7 @@ def cargar_pareado(entrada: Path | str,
     if par.empty:
         raise ValueError("el emparejamiento no cuadra, revisa las semillas")
 
-    par = par[(par["acierto_sentido_b"] == 1.0) & (par["acierto_sentido_s"] == 1.0)]
+    par = par[(par["tau_circular_b"] > 0) & (par["tau_circular_s"] > 0)]
     for m in ("atlas_error_onda", "atlas_variabilidad_pico_h", "atlas_sesgo_omega",
               "atlas_vpp", "atlas_err_subida_h"):
         par[f"d_{m}"] = par[f"{m}_s"] - par[f"{m}_b"]

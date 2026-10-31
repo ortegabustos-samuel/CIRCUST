@@ -25,7 +25,7 @@ def _fila(**kw):
         robust_method="best_k", selection_criterion="r2_median",
         aggregation="auto", consensus_scale="circmean", status="ok",
         error_fase_h=1.0, error_fase_medio_h=1.2, rho_circ=0.9, rho_fl=0.9, tau=0.8, tau_circular=0.9,
-        acierto_sentido=1.0, p1=0.4, p2=0.7, p4=0.9, error_orden_h=0.5,
+        p1=0.4, p2=0.7, p4=0.9, error_orden_h=0.5,
         r2_anchor=0.8, pares_ok=1.0, evidencia=1.7, desacuerdo_K=0.01,
         n_top=100, t_total_s=5.0, t_robust_s=2.0,
         atlas_error_onda=0.3, atlas_variabilidad_pico_h=1.0,
@@ -67,8 +67,7 @@ def _falso(reps: int = 3) -> pd.DataFrame:
     for w in (0.1, 0.9):
         for rep in range(reps):
             filas.append(_fila(bloque="sin_ruido", omega=w, snr=1e6,
-                               tau_circular=0.2 if w == 0.1 else 1.0,
-                               acierto_sentido=0.0 if w == 0.1 else 1.0))
+                               tau_circular=0.2 if w == 0.1 else 1.0))
     return pd.DataFrame(filas)
 
 
@@ -80,7 +79,7 @@ def test_tabla_reconstruccion_usa_solo_la_referencia():
     assert len(t) == 2 * 2 * 2
     # 3 replicas por celda: solo base y best_k:r2_median entran
     assert (t[("n", "")] == 3).all()
-    assert {"error_fase_h", "concordancia", "acierto_sentido"} <= set(
+    assert {"error_fase_h", "concordancia", "tau_circular"} <= set(
         t.columns.get_level_values(0))
 
 
@@ -105,14 +104,11 @@ def test_rho_se_agrega_con_mediana_y_no_con_media():
     assert (t[("rho_circ", "mediana")] > 0.8).all()
 
 
-def test_la_orientacion_se_agrega_como_TASA_no_como_mediana():
-    df = _falso()
-    ref = (df.bloque == "rejilla") & (df.fmm_method == "base") \
-        & (df.selection_criterion == "r2_median") & (df.robust_method == "best_k")
-    idx = df[ref].groupby(["sampling", "omega", "snr"]).head(1).index
-    df.loc[idx, "acierto_sentido"] = 0.0
-    t = tabla_reconstruccion(df)
-    assert np.allclose(t[("acierto_sentido", "tasa")].values, 2 / 3)
+def test_ya_no_hay_tasa_de_acierto_del_sentido():
+    """El sentido de giro se lee en el signo de tau_circular, sin tasa aparte."""
+    t = tabla_reconstruccion(_falso())
+    assert "acierto_sentido" not in set(t.columns.get_level_values(0))
+    assert ("tau_circular", "mediana") in t.columns
 
 
 def test_las_filas_con_fallo_no_entran_en_las_medianas_pero_si_se_cuentan():
@@ -136,12 +132,12 @@ def test_la_calidad_del_orden_se_resume_en_valor_absoluto():
     replicas +0,8 +0,8 -0,8 -0,8 resumidas con signo dan 0,0, que se lee
     como "no se recupero nada" cuando la calidad real es 0,8 en las cuatro.
     """
-    filas = [_fila(rep=i, tau_circular=s * 0.8, acierto_sentido=float(s > 0))
+    filas = [_fila(rep=i, tau_circular=s * 0.8)
              for i, s in enumerate([1, 1, -1, -1])]
     t = tabla_reconstruccion(pd.DataFrame(filas))
     assert t[("concordancia", "mediana")].iloc[0] == pytest.approx(0.8)
-    assert t[("acierto_sentido", "tasa")].iloc[0] == pytest.approx(0.5)
-    assert ("tau_circular", "mediana") not in t.columns
+    # con signo se reporta tambien, y ahi se ve que el sentido se reparte
+    assert t[("tau_circular", "mediana")].iloc[0] == pytest.approx(0.0)
 
 
 def test_tabla_sin_ruido_separa_orden_de_orientacion():
@@ -150,8 +146,8 @@ def test_tabla_sin_ruido_separa_orden_de_orientacion():
     buena = t[t.omega == 0.9].iloc[0]
     mala  = t[t.omega == 0.1].iloc[0]
     assert buena[("concordancia", "mediana")] == pytest.approx(1.0)
-    assert buena[("acierto_sentido", "tasa")] == pytest.approx(1.0)
-    assert mala[("acierto_sentido", "tasa")] == pytest.approx(0.0)
+    assert buena[("tau_circular", "mediana")] == pytest.approx(1.0)
+    assert mala[("tau_circular", "mediana")] == pytest.approx(0.2)
 
 
 # ── contraste FMM ──────────────────────────────────────────────────────────
@@ -167,7 +163,7 @@ def test_contraste_fmm_es_pareado_y_con_el_metodo_fijo():
 def test_contraste_fmm_descarta_las_replicas_con_orientacion_invertida():
     df = _falso()
     malas = (df.bloque == "rejilla") & (df.fmm_method == "circafmm") & (df.rep == 0)
-    df.loc[malas, "acierto_sentido"] = 0.0
+    df.loc[malas, "tau_circular"] = -0.9
     par = contraste_fmm(df)
     assert 0 not in set(par["rep"])
     assert len(par) == 8 * 2
